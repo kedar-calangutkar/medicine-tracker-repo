@@ -167,6 +167,10 @@ class MedicineSensor(SensorEntity, RestoreEntity):
         
         self._update_state()
 
+    async def async_update(self):
+        """Update the entity state."""
+        self._update_state()
+
     def _get_current_timezone(self):
         """Determine the effective timezone."""
         if self._time_mode == MODE_LOCAL_TIME and self._tz_sensor:
