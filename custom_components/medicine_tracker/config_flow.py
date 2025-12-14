@@ -121,8 +121,9 @@ class MedicineTrackerOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = config_entry
-        self.medicines = {**self.config_entry.options.get(CONF_MEDICINES, self.config_entry.data.get(CONF_MEDICINES, {}))}
+        # self.config_entry is now a read-only property in HA, so we do not set it manually.
+        # We use the 'config_entry' argument passed to this function to initialize our data.
+        self.medicines = {**config_entry.options.get(CONF_MEDICINES, config_entry.data.get(CONF_MEDICINES, {}))}
         self._editing_id = None
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
@@ -231,3 +232,4 @@ class MedicineTrackerOptionsFlowHandler(config_entries.OptionsFlow):
                 CONF_TZ_SENSOR: current_tz
             }
         )
+

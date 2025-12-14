@@ -1,0 +1,85 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure Medicine Tracker",
+        "description": "Set up a medicine tracker for a specific person.",
+        "data": {
+          "patient": "Patient (Person Entity)",
+          "tz_sensor": "Timezone Sensor (Optional, for Local Time)"
+        }
+      }
+    },
+    "error": {
+      "already_configured": "This person is already configured."
+    },
+    "abort": {
+      "already_configured": "This person is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Medicine Tracker Options",
+        "description": "What would you like to do?",
+        "menu_options": {
+          "add_medicine": "Add New Medicine",
+          "edit_medicine": "Edit Existing Medicine",
+          "remove_medicine": "Remove Medicine",
+          "global_settings": "Global Settings"
+        }
+      },
+      "add_medicine": {
+        "title": "Add Medicine",
+        "description": "Enter the details for the new medicine.",
+        "data": {
+          "name": "Medicine Name",
+          "dosage": "Dosage (e.g., 10mg)",
+          "icon": "Icon",
+          "time": "Schedule Time",
+          "days": "Schedule Days",
+          "time_mode": "Time Mode"
+        }
+      },
+      "edit_medicine": {
+        "title": "Select Medicine to Edit",
+        "description": "Choose which medicine you want to modify.",
+        "data": {
+          "med_id": "Medicine"
+        }
+      },
+      "edit_medicine_details": {
+        "title": "Edit Medicine Details",
+        "description": "Update the details below.",
+        "data": {
+          "name": "Medicine Name",
+          "dosage": "Dosage",
+          "icon": "Icon",
+          "time": "Schedule Time",
+          "days": "Schedule Days",
+          "time_mode": "Time Mode"
+        }
+      },
+      "remove_medicine": {
+        "title": "Remove Medicine",
+        "description": "Select the medicine you wish to remove.",
+        "data": {
+          "med_id": "Medicine"
+        }
+      },
+      "global_settings": {
+        "title": "Global Settings",
+        "description": "Update settings for this user.",
+        "data": {
+          "tz_sensor": "Timezone Sensor"
+        }
+      }
+    },
+    "error": {
+      "no_medicines": "No medicines found to edit or remove."
+    },
+    "abort": {
+      "no_medicines": "No medicines found to edit or remove."
+    }
+  }
+}
