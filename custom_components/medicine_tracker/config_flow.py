@@ -8,7 +8,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.selector import (
     SelectSelector,
@@ -19,12 +19,13 @@ from homeassistant.helpers.selector import (
     IconSelector,
     EntitySelector,
     EntitySelectorConfig,
+    TextSelector,
 )
 
 from .const import (
     DOMAIN, CONF_NAME, CONF_ICON, CONF_DOSAGE,
-    CONF_PATIENT, CONF_SCHEDULE_DAYS, CONF_SCHEDULE_TIME,
-    CONF_TIME_MODE, CONF_TZ_SENSOR,
+    CONF_PATIENT, CONF_NOTIFY_ENTITY, CONF_SCHEDULE_DAYS, 
+    CONF_SCHEDULE_TIME, CONF_TIME_MODE, CONF_TZ_SENSOR,
     MODE_HOME_TIME, MODE_LOCAL_TIME,
     CONF_MEDICINES, CONF_MEDICINE_ID
 )
@@ -64,13 +65,23 @@ def get_medicine_schema(defaults=None):
             SelectSelectorConfig(options=DAY_OPTIONS, multiple=True)
         ),
         
-        # We only ask for the mode now, not the sensor
         vol.Required(CONF_TIME_MODE, default=defaults.get(CONF_TIME_MODE, MODE_HOME_TIME)): SelectSelector(
             SelectSelectorConfig(options=TIME_MODE_OPTIONS, mode=SelectSelectorMode.DROPDOWN)
         ),
     }
     return vol.Schema(schema)
 
+def get_notify_service_options(hass: HomeAssistant) -> list[SelectOptionDict]:
+    """Dynamically get all registered notify services (including YAML groups)."""
+    services = hass.services.async_services().get("notify", {})
+    options = [
+        SelectOptionDict(value=f"notify.{service}", label=f"notify.{service}")
+        for service in services
+    ]
+    # Fallback if no notify services are found somehow
+    if not options:
+        options = [SelectOptionDict(value="notify.notify", label="notify.notify")]
+    return options
 
 class MedicineTrackerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Medicine Tracker."""
@@ -83,32 +94,37 @@ class MedicineTrackerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return MedicineTrackerOptionsFlowHandler(config_entry)
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Step 1: Setup User and Global Timezone Sensor."""
+        """Step 1: Setup User Name, Notify Service, and Global Timezone Sensor."""
         errors = {}
         
         if user_input is not None:
-            patient_id = user_input[CONF_PATIENT]
+            user_name = user_input[CONF_PATIENT]
             
-            await self.async_set_unique_id(patient_id)
+            await self.async_set_unique_id(user_name.lower().replace(" ", "_"))
             self._abort_if_unique_id_configured()
-
-            state = self.hass.states.get(patient_id)
-            name = state.attributes.get("friendly_name", state.name) if state else patient_id
             
             return self.async_create_entry(
-                title=f"Medicines for {name}",
+                title=f"Medicines for {user_name}",
                 data={
-                    CONF_PATIENT: patient_id,
+                    CONF_PATIENT: user_name,
+                    CONF_NOTIFY_ENTITY: user_input.get(CONF_NOTIFY_ENTITY),
                     CONF_TZ_SENSOR: user_input.get(CONF_TZ_SENSOR), 
                     CONF_MEDICINES: {} 
                 }
             )
 
+        notify_options = get_notify_service_options(self.hass)
+
         schema = vol.Schema({
-            vol.Required(CONF_PATIENT): EntitySelector(
-                EntitySelectorConfig(domain="person")
+            vol.Required(CONF_PATIENT): TextSelector(),
+            # Dynamic dropdown of notify services with custom input enabled
+            vol.Required(CONF_NOTIFY_ENTITY): SelectSelector(
+                SelectSelectorConfig(
+                    options=notify_options, 
+                    mode=SelectSelectorMode.DROPDOWN,
+                    custom_value=True # Allows you to type one in if it hasn't loaded yet!
+                )
             ),
-            # Global Timezone Sensor for this person
             vol.Optional(CONF_TZ_SENSOR): EntitySelector(
                 EntitySelectorConfig(domain="sensor")
             )
@@ -121,8 +137,6 @@ class MedicineTrackerOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        # self.config_entry is now a read-only property in HA, so we do not set it manually.
-        # We use the 'config_entry' argument passed to this function to initialize our data.
         self.medicines = {**config_entry.options.get(CONF_MEDICINES, config_entry.data.get(CONF_MEDICINES, {}))}
         self._editing_id = None
 
@@ -135,25 +149,45 @@ class MedicineTrackerOptionsFlowHandler(config_entries.OptionsFlow):
     
     # --- SETTINGS ---
     async def async_step_global_settings(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Update global settings like Timezone Sensor."""
+        """Update global settings like User Name, Target Notify Service or Timezone Sensor."""
         if user_input is not None:
             return self.async_create_entry(
                 title="",
                 data={
                     CONF_MEDICINES: self.medicines,
+                    CONF_PATIENT: user_input.get(CONF_PATIENT),
+                    CONF_NOTIFY_ENTITY: user_input.get(CONF_NOTIFY_ENTITY),
                     CONF_TZ_SENSOR: user_input.get(CONF_TZ_SENSOR)
                 }
             )
 
+        current_patient = self.config_entry.options.get(CONF_PATIENT, self.config_entry.data.get(CONF_PATIENT))
+        current_notify = self.config_entry.options.get(CONF_NOTIFY_ENTITY, self.config_entry.data.get(CONF_NOTIFY_ENTITY))
         current_tz = self.config_entry.options.get(CONF_TZ_SENSOR, self.config_entry.data.get(CONF_TZ_SENSOR))
         
-        schema = vol.Schema({
-            vol.Optional(CONF_TZ_SENSOR, default=current_tz): EntitySelector(
+        notify_options = get_notify_service_options(self.hass)
+        
+        schema_dict = {
+            vol.Required(CONF_PATIENT, default=current_patient): TextSelector(),
+            vol.Required(CONF_NOTIFY_ENTITY, default=current_notify): SelectSelector(
+                SelectSelectorConfig(
+                    options=notify_options, 
+                    mode=SelectSelectorMode.DROPDOWN,
+                    custom_value=True
+                )
+            )
+        }
+        
+        if current_tz:
+            schema_dict[vol.Optional(CONF_TZ_SENSOR, default=current_tz)] = EntitySelector(
                 EntitySelectorConfig(domain="sensor")
             )
-        })
+        else:
+            schema_dict[vol.Optional(CONF_TZ_SENSOR)] = EntitySelector(
+                EntitySelectorConfig(domain="sensor")
+            )
         
-        return self.async_show_form(step_id="global_settings", data_schema=schema)
+        return self.async_show_form(step_id="global_settings", data_schema=vol.Schema(schema_dict))
 
     # --- ADD ---
     async def async_step_add_medicine(self, user_input: dict[str, Any] | None = None) -> FlowResult:
@@ -223,13 +257,16 @@ class MedicineTrackerOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def _update_entry(self):
         """Write changes back."""
+        current_patient = self.config_entry.options.get(CONF_PATIENT, self.config_entry.data.get(CONF_PATIENT))
+        current_notify = self.config_entry.options.get(CONF_NOTIFY_ENTITY, self.config_entry.data.get(CONF_NOTIFY_ENTITY))
         current_tz = self.config_entry.options.get(CONF_TZ_SENSOR, self.config_entry.data.get(CONF_TZ_SENSOR))
         
         return self.async_create_entry(
             title="",
             data={
                 CONF_MEDICINES: self.medicines,
+                CONF_PATIENT: current_patient,
+                CONF_NOTIFY_ENTITY: current_notify,
                 CONF_TZ_SENSOR: current_tz
             }
         )
-

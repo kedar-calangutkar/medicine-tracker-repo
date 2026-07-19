@@ -3,18 +3,19 @@
     "step": {
       "user": {
         "title": "Configure Medicine Tracker",
-        "description": "Set up a medicine tracker for a specific person.",
+        "description": "Set up a medicine tracker. You can assign a notification service to easily target alerts later.",
         "data": {
-          "patient": "Patient (Person Entity)",
+          "patient": "User Name (e.g. Kedar)",
+          "notify_entity": "Target Notification Service",
           "tz_sensor": "Timezone Sensor (Optional, for Local Time)"
         }
       }
     },
     "error": {
-      "already_configured": "This person is already configured."
+      "already_configured": "This user is already configured."
     },
     "abort": {
-      "already_configured": "This person is already configured."
+      "already_configured": "This user is already configured."
     }
   },
   "options": {
@@ -71,6 +72,8 @@
         "title": "Global Settings",
         "description": "Update settings for this user.",
         "data": {
+          "patient": "User Name",
+          "notify_entity": "Target Notification Service",
           "tz_sensor": "Timezone Sensor"
         }
       }

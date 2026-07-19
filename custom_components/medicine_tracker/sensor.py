@@ -15,9 +15,9 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN, CONF_NAME, CONF_ICON, CONF_DOSAGE,
-    CONF_PATIENT, CONF_SCHEDULE_DAYS, CONF_SCHEDULE_TIME,
-    CONF_TIME_MODE, CONF_TZ_SENSOR, MODE_LOCAL_TIME,
-    CONF_MEDICINES
+    CONF_PATIENT, CONF_NOTIFY_ENTITY, CONF_SCHEDULE_DAYS, 
+    CONF_SCHEDULE_TIME, CONF_TIME_MODE, CONF_TZ_SENSOR, 
+    MODE_LOCAL_TIME, CONF_MEDICINES
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -38,7 +38,9 @@ async def async_setup_entry(
     if medicines_dict is None:
         medicines_dict = entry.data.get(CONF_MEDICINES, {})
 
-    patient_id = entry.data.get(CONF_PATIENT)
+    # Fallback structure to support updates via Options Flow
+    patient_name = entry.options.get(CONF_PATIENT, entry.data.get(CONF_PATIENT))
+    notify_entity = entry.options.get(CONF_NOTIFY_ENTITY, entry.data.get(CONF_NOTIFY_ENTITY))
     global_tz_sensor = entry.options.get(CONF_TZ_SENSOR, entry.data.get(CONF_TZ_SENSOR))
 
     sensors = []
@@ -55,7 +57,8 @@ async def async_setup_entry(
             CONF_NAME: med_data.get(CONF_NAME),
             CONF_ICON: med_data.get(CONF_ICON),
             CONF_DOSAGE: med_data.get(CONF_DOSAGE),
-            CONF_PATIENT: patient_id, 
+            CONF_PATIENT: patient_name,
+            CONF_NOTIFY_ENTITY: notify_entity, 
             CONF_SCHEDULE_DAYS: med_data.get(CONF_SCHEDULE_DAYS, []),
             CONF_SCHEDULE_TIME: time_obj,
             CONF_TIME_MODE: med_data.get(CONF_TIME_MODE),
@@ -78,7 +81,8 @@ class MedicineSensor(SensorEntity, RestoreEntity):
         self._icon_default = config[CONF_ICON]
         self._icon = self._icon_default
         self._dosage = config.get(CONF_DOSAGE)
-        self._patient_entity_id = config.get(CONF_PATIENT)
+        self._patient_name = config.get(CONF_PATIENT)
+        self._notify_entity = config.get(CONF_NOTIFY_ENTITY)
         
         self._schedule_time = config[CONF_SCHEDULE_TIME]
         self._schedule_days = config[CONF_SCHEDULE_DAYS]
@@ -88,7 +92,6 @@ class MedicineSensor(SensorEntity, RestoreEntity):
         
         self._state = "Unknown"
         self._next_due = None
-        self._patient_name = None
         self._history = [] 
 
     @property
@@ -114,8 +117,8 @@ class MedicineSensor(SensorEntity, RestoreEntity):
     def extra_state_attributes(self):
         attributes = {
             "dosage": self._dosage,
-            "patient_entity": self._patient_entity_id,
-            "patient_name": self._patient_name,
+            "user_name": self._patient_name,
+            "notify_entity": self._notify_entity,
             "schedule_time": self._schedule_time.strftime("%H:%M"),
             "schedule_days": self._schedule_days,
             "time_mode": self._time_mode,
@@ -133,15 +136,8 @@ class MedicineSensor(SensorEntity, RestoreEntity):
         return attributes
 
     async def async_added_to_hass(self):
-        """Restore state and resolve patient name."""
+        """Restore state."""
         await super().async_added_to_hass()
-        
-        if self._patient_entity_id:
-            state = self.hass.states.get(self._patient_entity_id)
-            if state:
-                self._patient_name = state.attributes.get("friendly_name", state.name)
-            else:
-                self._patient_name = self._patient_entity_id
 
         last_state = await self.async_get_last_state()
         if last_state:

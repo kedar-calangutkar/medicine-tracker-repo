@@ -4,7 +4,8 @@ DOMAIN = "medicine_tracker"
 
 # Configuration Keys (Entry Level)
 CONF_MEDICINES = "medicines" 
-CONF_PATIENT = "patient"
+CONF_PATIENT = "patient" # Now a simple text string, not an entity
+CONF_NOTIFY_ENTITY = "notify_entity" 
 CONF_TZ_SENSOR = "tz_sensor" # Global Timezone Sensor for the User
 
 # Medicine Properties (Item Level)
