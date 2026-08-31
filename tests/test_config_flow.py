@@ -1,5 +1,4 @@
 """Tests for the Medicine Tracker config flow."""
-from unittest.mock import patch
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
@@ -7,7 +6,8 @@ from homeassistant.data_entry_flow import FlowResultType
 from custom_components.medicine_tracker.const import (
     DOMAIN, CONF_MEDICINES, CONF_PATIENT, CONF_NAME, CONF_ICON,
     CONF_DOSAGE, CONF_SCHEDULE_TIME, CONF_SCHEDULE_DAYS,
-    CONF_TIME_MODE, CONF_TZ_SENSOR, MODE_HOME_TIME, CONF_MEDICINE_ID
+    CONF_TIME_MODE, CONF_TZ_SENSOR, CONF_NOTIFY_ENTITY,
+    MODE_HOME_TIME, CONF_MEDICINE_ID
 )
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -21,26 +21,22 @@ async def test_user_flow(hass: HomeAssistant):
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "user"
 
-    # 2. Submit Form
-    with patch("homeassistant.helpers.entity_registry.EntityRegistry.async_get"), \
-         patch("homeassistant.core.StateMachine.get") as mock_get_state:
+    # 2. Submit Form. CONF_PATIENT is a free-text name, not an entity
+    # reference, so no person/state-machine lookup happens here.
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_PATIENT: "Test User",
+            CONF_NOTIFY_ENTITY: "notify.mobile_app_test",
+            CONF_TZ_SENSOR: "sensor.phone_tz"
+        }
+    )
 
-        # Mock state for person
-        mock_get_state.return_value.name = "Test User"
-        mock_get_state.return_value.attributes = {"friendly_name": "Test User Friendly"}
-
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {
-                CONF_PATIENT: "person.test_user",
-                CONF_TZ_SENSOR: "sensor.phone_tz"
-            }
-        )
-
-        assert result["type"] == FlowResultType.CREATE_ENTRY
-        assert result["title"] == "Medicines for Test User Friendly"
-        assert result["data"][CONF_PATIENT] == "person.test_user"
-        assert result["data"][CONF_TZ_SENSOR] == "sensor.phone_tz"
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Medicines for Test User"
+    assert result["data"][CONF_PATIENT] == "Test User"
+    assert result["data"][CONF_NOTIFY_ENTITY] == "notify.mobile_app_test"
+    assert result["data"][CONF_TZ_SENSOR] == "sensor.phone_tz"
 
 async def test_options_flow_add_medicine(hass: HomeAssistant):
     """Test adding a medicine via options flow."""
