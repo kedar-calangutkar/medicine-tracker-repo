@@ -12,8 +12,33 @@ Features
  * History: Keeps a log of the last 10 times the medicine was taken.
 Usage
  * Add Integration: Go to Settings > Devices & Services > Add Integration > Medicine Tracker.
- * Setup User: Select the Person (e.g., "Kedar") and their Timezone Sensor (e.g., sensor.iphone_current_time_zone).
- * Add Medicines: Click Configure on the new entry to Add, Edit, or Remove medicines.
+ * Setup User: Enter a name for this person (e.g., "Kedar" - just a label, not a Home Assistant `person.*` entity), pick a `notify.*` service to target for reminders, and optionally a Timezone Sensor (e.g., sensor.iphone_current_time_zone) for Local Time mode.
+ * Manage Medicines & Settings: Click Configure on the new entry to Add, Edit, or Remove medicines, or update Global Settings (name, notify target, timezone sensor) later.
+
+## Services
+Medicine Tracker exposes domain services, targeted at one or more medicine sensor entities.
+
+### take_medicine
+Marks a medicine as taken and logs it to history.
+ * Arguments: `time_taken` (Optional): Override for when it was actually taken (defaults to now).
+
+```yaml
+action: medicine_tracker.take_medicine
+target:
+  entity_id: sensor.morning_pill
+data:
+  time_taken: "2024-01-01 08:15:00"
+```
+
+### reset_history
+Clears the taken history.
+```yaml
+action: medicine_tracker.reset_history
+target:
+  entity_id: sensor.morning_pill
+```
+
+> Both services require a target `entity_id` and validate their input: calling one with no target, or with an unparseable `time_taken`, raises an error instead of silently doing the wrong thing (e.g. logging the dose as taken "now").
 
 ## Events
 Medicine Tracker fires bus events you can trigger automations from, in addition to polling entity state/attributes.
