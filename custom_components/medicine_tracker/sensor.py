@@ -180,6 +180,7 @@ class MedicineSensor(SensorEntity, RestoreEntity):
 
     def _update_state(self):
         """Calculate next due date and set descriptive state."""
+        old_state = self._state
         try:
             tz = self._get_current_timezone()
             now_in_tz = dt_util.now(time_zone=tz)
@@ -277,10 +278,31 @@ class MedicineSensor(SensorEntity, RestoreEntity):
                 self._state = "Unknown"
                 self._icon = "mdi:help-circle"
 
+            self._check_and_fire_due_event(old_state)
+
         except Exception as e:
             _LOGGER.error(f"Error updating medicine {self._name}: {e}")
             self._state = "Error"
             self._icon = "mdi:alert"
+
+    def _check_and_fire_due_event(self, old_state):
+        """Fire an event the moment the medicine becomes overdue.
+
+        "Due at X" only means "later today" here (medicine tracker tracks
+        clock time, unlike task tracker's day-level granularity) and can be
+        shown well before the scheduled time, so only the transition into
+        "Overdue" (the time has actually passed) is worth notifying about.
+        """
+        if old_state in ("Unknown", "Error"):
+            return
+
+        if self._state == "Overdue" and old_state != "Overdue":
+            self.hass.bus.fire(f"{DOMAIN}_medicine_due", {
+                "entity_id": self.entity_id,
+                "name": self._name,
+                "state": self._state,
+                "next_due": self._next_due.isoformat() if self._next_due else None
+            })
 
     async def mark_taken(self, custom_date=None):
         """Action: Mark the medicine as taken and log to history."""
@@ -290,11 +312,19 @@ class MedicineSensor(SensorEntity, RestoreEntity):
                 done_time = done_time.replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
         else:
             done_time = dt_util.now()
-            
+
         self._history.append(done_time)
         self._history.sort()
         self._history = self._history[-10:]
         self._update_state()
+
+        self.hass.bus.fire(f"{DOMAIN}_medicine_taken", {
+            "entity_id": self.entity_id,
+            "name": self._name,
+            "last_taken": done_time.isoformat(),
+            "next_due": self._next_due.isoformat() if self._next_due else None
+        })
+
         self.async_write_ha_state()
 
     async def reset_history(self):

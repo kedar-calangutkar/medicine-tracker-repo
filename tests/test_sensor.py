@@ -11,7 +11,9 @@ from custom_components.medicine_tracker.const import (
     CONF_TIME_MODE, CONF_TZ_SENSOR, MODE_HOME_TIME, MODE_LOCAL_TIME
 )
 
-from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry, async_fire_time_changed, async_capture_events
+)
 from homeassistant.helpers.entity_component import async_update_entity
 
 async def test_sensor_setup(hass):
@@ -80,6 +82,56 @@ async def test_sensor_state_calculations(hass):
         state = hass.states.get("sensor.morning_pill")
         assert state.state == "Overdue"
 
+async def test_medicine_due_event_fires_only_on_overdue_transition(hass):
+    """medicine_tracker_medicine_due fires when the state becomes Overdue,
+    not when it merely shows "Due at X" for later today."""
+    now = dt_util.now().replace(hour=7, minute=0, second=0, microsecond=0)
+
+    with patch("homeassistant.util.dt.now", return_value=now):
+        entry_data = {
+            CONF_PATIENT: "person.test_user",
+            CONF_MEDICINES: {
+                "med1": {
+                    CONF_NAME: "Due Event Pill",
+                    CONF_SCHEDULE_TIME: "08:00:00",
+                    CONF_SCHEDULE_DAYS: [],
+                    CONF_TIME_MODE: MODE_HOME_TIME,
+                    CONF_ICON: "mdi:pill",
+                }
+            }
+        }
+
+        entry = MockConfigEntry(domain=DOMAIN, data=entry_data)
+        entry.add_to_hass(hass)
+
+        events = async_capture_events(hass, "medicine_tracker_medicine_due")
+
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        # Setup landed on "Due at 8 AM" (not yet due) - no event yet.
+        state = hass.states.get("sensor.due_event_pill")
+        assert "Due at 8 AM" in state.state
+        assert len(events) == 0
+
+    # Advance past the scheduled time -> Overdue. Event should fire once.
+    now = now.replace(hour=8, minute=30)
+    with patch("homeassistant.util.dt.now", return_value=now):
+        await async_update_entity(hass, "sensor.due_event_pill")
+        await hass.async_block_till_done()
+
+        state = hass.states.get("sensor.due_event_pill")
+        assert state.state == "Overdue"
+        assert len(events) == 1
+        assert events[0].data["entity_id"] == "sensor.due_event_pill"
+        assert events[0].data["name"] == "Due Event Pill"
+        assert events[0].data["state"] == "Overdue"
+
+        # Further updates while still overdue must not re-fire the event.
+        await async_update_entity(hass, "sensor.due_event_pill")
+        await hass.async_block_till_done()
+        assert len(events) == 1
+
 async def test_mark_taken(hass):
     """Test marking medicine as taken."""
     now = dt_util.now().replace(hour=9, minute=0, second=0, microsecond=0)
@@ -118,6 +170,44 @@ async def test_mark_taken(hass):
         # Should be due tomorrow now
         assert state.state == "Due Tomorrow"
         assert len(state.attributes["history"]) == 1
+
+async def test_mark_taken_fires_taken_event(hass):
+    """take_medicine fires medicine_tracker_medicine_taken with the entity_id."""
+    now = dt_util.now().replace(hour=9, minute=0, second=0, microsecond=0)
+    with patch("homeassistant.util.dt.now", return_value=now):
+        entry_data = {
+            CONF_PATIENT: "person.test_user",
+            CONF_MEDICINES: {
+                "med1": {
+                    CONF_NAME: "Taken Event Pill",
+                    CONF_SCHEDULE_TIME: "08:00:00",
+                    CONF_SCHEDULE_DAYS: [],
+                    CONF_TIME_MODE: MODE_HOME_TIME,
+                    CONF_ICON: "mdi:pill",
+                }
+            }
+        }
+
+        entry = MockConfigEntry(domain=DOMAIN, data=entry_data)
+        entry.add_to_hass(hass)
+
+        events = async_capture_events(hass, "medicine_tracker_medicine_taken")
+
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        await hass.services.async_call(
+            DOMAIN,
+            "take_medicine",
+            {"entity_id": "sensor.taken_event_pill"},
+            blocking=True
+        )
+        await hass.async_block_till_done()
+
+        assert len(events) == 1
+        assert events[0].data["entity_id"] == "sensor.taken_event_pill"
+        assert events[0].data["name"] == "Taken Event Pill"
+        assert events[0].data["last_taken"] == now.isoformat()
 
 async def test_schedule_days(hass):
     """Test specific schedule days."""
