@@ -2,6 +2,7 @@
 from unittest.mock import patch, AsyncMock
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.setup import async_setup_component
 
 from custom_components.medicine_tracker.const import (
@@ -111,5 +112,87 @@ async def test_services(hass: HomeAssistant):
         blocking=True
     )
 
+    state = hass.states.get(entity_id)
+    assert len(state.attributes.get("history", [])) == 0
+
+
+async def test_take_medicine_without_target_raises(hass: HomeAssistant):
+    """Calling take_medicine with no entity_id/target must fail loudly
+    instead of crashing with a TypeError deep inside the handler."""
+    entry_data = {
+        CONF_PATIENT: "person.test_user",
+        CONF_MEDICINES: {
+            "med1": {
+                CONF_NAME: "No Target Pill",
+                CONF_SCHEDULE_TIME: "08:00:00",
+                CONF_SCHEDULE_DAYS: [],
+                CONF_TIME_MODE: MODE_HOME_TIME,
+                CONF_ICON: "mdi:pill",
+            }
+        }
+    }
+    entry = MockConfigEntry(domain=DOMAIN, data=entry_data)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(DOMAIN, "take_medicine", {}, blocking=True)
+
+
+async def test_reset_history_without_target_raises(hass: HomeAssistant):
+    """Same missing-target validation applies to reset_history."""
+    entry_data = {
+        CONF_PATIENT: "person.test_user",
+        CONF_MEDICINES: {
+            "med1": {
+                CONF_NAME: "No Target Pill 2",
+                CONF_SCHEDULE_TIME: "08:00:00",
+                CONF_SCHEDULE_DAYS: [],
+                CONF_TIME_MODE: MODE_HOME_TIME,
+                CONF_ICON: "mdi:pill",
+            }
+        }
+    }
+    entry = MockConfigEntry(domain=DOMAIN, data=entry_data)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(DOMAIN, "reset_history", {}, blocking=True)
+
+
+async def test_take_medicine_rejects_unparseable_time_taken(hass: HomeAssistant):
+    """An unparseable time_taken must be rejected, not silently recorded
+    as "now" in the medication history."""
+    entry_data = {
+        CONF_PATIENT: "person.test_user",
+        CONF_MEDICINES: {
+            "med1": {
+                CONF_NAME: "Bad Time Pill",
+                CONF_SCHEDULE_TIME: "08:00:00",
+                CONF_SCHEDULE_DAYS: [],
+                CONF_TIME_MODE: MODE_HOME_TIME,
+                CONF_ICON: "mdi:pill",
+            }
+        }
+    }
+    entry = MockConfigEntry(domain=DOMAIN, data=entry_data)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_id = "sensor.bad_time_pill"
+
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN,
+            "take_medicine",
+            {"entity_id": entity_id, "time_taken": "not-a-real-datetime"},
+            blocking=True,
+        )
+
+    # The bad call must not have recorded anything.
     state = hass.states.get(entity_id)
     assert len(state.attributes.get("history", [])) == 0
