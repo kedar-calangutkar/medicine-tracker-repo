@@ -156,3 +156,96 @@ async def test_options_flow_remove_medicine(hass: HomeAssistant):
     assert result["type"] == FlowResultType.CREATE_ENTRY
     medicines = result["data"][CONF_MEDICINES]
     assert len(medicines) == 0
+
+async def test_options_flow_edit_medicine_no_medicines_aborts(hass: HomeAssistant):
+    """Selecting Edit Medicine with none configured aborts cleanly instead
+    of crashing on an empty options list."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_PATIENT: "person.test", CONF_MEDICINES: {}},
+        entry_id="test_entry_id"
+    )
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "edit_medicine"}
+    )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "no_medicines"
+
+async def test_options_flow_remove_medicine_no_medicines_aborts(hass: HomeAssistant):
+    """Selecting Remove Medicine with none configured aborts cleanly instead
+    of crashing on an empty options list."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_PATIENT: "person.test", CONF_MEDICINES: {}},
+        entry_id="test_entry_id"
+    )
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "remove_medicine"}
+    )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "no_medicines"
+
+async def test_options_flow_global_settings_update(hass: HomeAssistant):
+    """Test updating patient name and notify entity via Global Settings."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_PATIENT: "Old Name",
+            CONF_NOTIFY_ENTITY: "notify.old",
+            CONF_MEDICINES: {},
+        },
+        entry_id="test_entry_id"
+    )
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "global_settings"}
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "global_settings"
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_PATIENT: "New Name",
+            CONF_NOTIFY_ENTITY: "notify.new",
+        }
+    )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_PATIENT] == "New Name"
+    assert result["data"][CONF_NOTIFY_ENTITY] == "notify.new"
+    # Medicines must be preserved untouched by a global-settings-only edit.
+    assert result["data"][CONF_MEDICINES] == {}
+
+async def test_options_flow_global_settings_form_with_existing_tz_sensor(hass: HomeAssistant):
+    """The Global Settings form must render correctly when a tz_sensor was
+    already configured, pre-filling it as the selector default."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_PATIENT: "Name",
+            CONF_NOTIFY_ENTITY: "notify.x",
+            CONF_TZ_SENSOR: "sensor.phone_tz",
+            CONF_MEDICINES: {},
+        },
+        entry_id="test_entry_id"
+    )
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "global_settings"}
+    )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "global_settings"

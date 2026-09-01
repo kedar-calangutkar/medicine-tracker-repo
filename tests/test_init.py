@@ -196,3 +196,22 @@ async def test_take_medicine_rejects_unparseable_time_taken(hass: HomeAssistant)
     # The bad call must not have recorded anything.
     state = hass.states.get(entity_id)
     assert len(state.attributes.get("history", [])) == 0
+
+
+async def test_options_update_triggers_reload(hass: HomeAssistant):
+    """Changing a config entry's options must reload the integration via
+    the registered update listener, so edits from the options flow take
+    effect immediately."""
+    entry_data = {CONF_PATIENT: "person.test_user", CONF_MEDICINES: {}}
+    entry = MockConfigEntry(domain=DOMAIN, data=entry_data)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    with patch.object(
+        hass.config_entries, "async_reload", wraps=hass.config_entries.async_reload
+    ) as mock_reload:
+        hass.config_entries.async_update_entry(entry, options={"foo": "bar"})
+        await hass.async_block_till_done()
+
+        mock_reload.assert_called_once_with(entry.entry_id)
