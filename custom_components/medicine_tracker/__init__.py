@@ -10,6 +10,7 @@ from .const import DOMAIN
 
 SERVICE_TAKE = "take_medicine"
 SERVICE_RESET = "reset_history"
+SERVICE_UNDO_LAST = "undo_last_dose"
 
 
 def _get_target_entity_ids(call: ServiceCall) -> list[str]:
@@ -61,9 +62,21 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                     if hasattr(entity, "reset_history"):
                         await entity.reset_history()
 
+    # 3. Undo Last Dose Service
+    async def handle_undo_last_dose(call: ServiceCall):
+        entity_ids = _get_target_entity_ids(call)
+
+        platforms = async_get_platforms(hass, DOMAIN)
+        for platform in platforms:
+            for entity in platform.entities.values():
+                if entity.entity_id in entity_ids:
+                    if hasattr(entity, "undo_last_dose"):
+                        await entity.undo_last_dose()
+
     hass.services.async_register(DOMAIN, SERVICE_TAKE, handle_take_medicine)
     hass.services.async_register(DOMAIN, SERVICE_RESET, handle_reset_history)
-    
+    hass.services.async_register(DOMAIN, SERVICE_UNDO_LAST, handle_undo_last_dose)
+
     return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

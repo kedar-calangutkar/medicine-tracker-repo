@@ -38,7 +38,15 @@ target:
   entity_id: sensor.morning_pill
 ```
 
-> Both services require a target `entity_id` and validate their input: calling one with no target, or with an unparseable `time_taken`, raises an error instead of silently doing the wrong thing (e.g. logging the dose as taken "now").
+### undo_last_dose
+Removes only the most recently logged dose, leaving earlier history intact. A no-op if there's no history.
+```yaml
+action: medicine_tracker.undo_last_dose
+target:
+  entity_id: sensor.morning_pill
+```
+
+> All three services require a target `entity_id` and validate their input: calling one with no target, or with an unparseable `time_taken`, raises an error instead of silently doing the wrong thing (e.g. logging the dose as taken "now").
 
 ## Events
 Medicine Tracker fires bus events you can trigger automations from, in addition to polling entity state/attributes.

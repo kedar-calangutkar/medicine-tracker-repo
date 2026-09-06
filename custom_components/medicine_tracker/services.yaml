@@ -19,3 +19,11 @@ reset_history:
     entity:
       integration: medicine_tracker
       domain: sensor
+
+undo_last_dose:
+  name: Undo Last Dose
+  description: Removes only the most recently logged dose, leaving earlier history intact.
+  target:
+    entity:
+      integration: medicine_tracker
+      domain: sensor
