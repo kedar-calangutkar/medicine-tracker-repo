@@ -116,6 +116,84 @@ async def test_services(hass: HomeAssistant):
     assert len(state.attributes.get("history", [])) == 0
 
 
+async def test_undo_last_dose(hass: HomeAssistant):
+    """undo_last_dose should remove only the most recent history entry."""
+    entry_data = {
+        CONF_PATIENT: "person.test_user",
+        CONF_MEDICINES: {
+            "med1": {
+                CONF_NAME: "Undo Pill",
+                CONF_SCHEDULE_TIME: "08:00:00",
+                CONF_SCHEDULE_DAYS: [],
+                CONF_TIME_MODE: MODE_HOME_TIME,
+                CONF_ICON: "mdi:pill",
+            }
+        }
+    }
+    entry = MockConfigEntry(domain=DOMAIN, data=entry_data)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_id = "sensor.undo_pill"
+
+    # Log two doses.
+    await hass.services.async_call(
+        DOMAIN, "take_medicine", {"entity_id": entity_id}, blocking=True
+    )
+    await hass.services.async_call(
+        DOMAIN, "take_medicine", {"entity_id": entity_id}, blocking=True
+    )
+
+    state = hass.states.get(entity_id)
+    assert len(state.attributes.get("history", [])) == 2
+    second_dose = state.attributes["history"][1]
+
+    # Undo removes only the most recent entry.
+    await hass.services.async_call(
+        DOMAIN, "undo_last_dose", {"entity_id": entity_id}, blocking=True
+    )
+
+    state = hass.states.get(entity_id)
+    history = state.attributes.get("history", [])
+    assert len(history) == 1
+    assert history[0] != second_dose
+
+    # Undoing with no history left is a no-op, not an error.
+    await hass.services.async_call(
+        DOMAIN, "undo_last_dose", {"entity_id": entity_id}, blocking=True
+    )
+    await hass.services.async_call(
+        DOMAIN, "undo_last_dose", {"entity_id": entity_id}, blocking=True
+    )
+
+    state = hass.states.get(entity_id)
+    assert len(state.attributes.get("history", [])) == 0
+
+
+async def test_undo_last_dose_without_target_raises(hass: HomeAssistant):
+    """Same missing-target validation applies to undo_last_dose."""
+    entry_data = {
+        CONF_PATIENT: "person.test_user",
+        CONF_MEDICINES: {
+            "med1": {
+                CONF_NAME: "No Target Pill 3",
+                CONF_SCHEDULE_TIME: "08:00:00",
+                CONF_SCHEDULE_DAYS: [],
+                CONF_TIME_MODE: MODE_HOME_TIME,
+                CONF_ICON: "mdi:pill",
+            }
+        }
+    }
+    entry = MockConfigEntry(domain=DOMAIN, data=entry_data)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(DOMAIN, "undo_last_dose", {}, blocking=True)
+
+
 async def test_take_medicine_without_target_raises(hass: HomeAssistant):
     """Calling take_medicine with no entity_id/target must fail loudly
     instead of crashing with a TypeError deep inside the handler."""

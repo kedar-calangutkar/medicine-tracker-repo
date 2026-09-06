@@ -332,3 +332,11 @@ class MedicineSensor(SensorEntity, RestoreEntity):
         self._history = []
         self._update_state()
         self.async_write_ha_state()
+
+    async def undo_last_dose(self):
+        """Action: Remove only the most recent history entry, if any."""
+        if not self._history:
+            return
+        self._history.pop()
+        self._update_state()
+        self.async_write_ha_state()
